@@ -2,21 +2,22 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: EC2 instance 
 
 Parameters:
-  VpcId:
-    Type: String
-  SubnetIds:
-    Type: AWS::SSM::Parameter::Value<List<String>>
   GitBranchOrCommit:
     Type: String
     Default: master
 
 Resources:
 
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: True
+      EnableDnsHostnames: True
 
   ApplicationLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Scheme: internal
       SecurityGroups:
       - !Ref ALBSecurityGroup
       Subnets: !Ref SubnetIds
@@ -35,7 +36,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
         GroupDescription: Allow http to client host
-        VpcId: !Ref VpcId
+        VpcId: !Ref VPC
         SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -59,25 +60,35 @@ Resources:
       ImageId: ami-08fdde86b93accf1c
       KeyName: test_key
       InstanceType: t3.small
-      UserData: |
-        sudo yum install ruby -y
-        sudo yum install git -y
-        sudo sudo yum install git-core zlib zlib-devel gcc-c++ patch readline readline-devel libyaml-devel libffi-devel openssl-devel make bzip2 autoconf automake libtool bison curl sqlite-devel -y
-        sudo curl -sL https://github.com/rbenv/rbenv-installer/raw/master/bin/rbenv-installer | bash -
-        sudo echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bashrc
-        sudo echo 'eval "$(rbenv init -)"' >> ~/.bashrc
-        source ~/.bashrc
-        
-        rbenv install 2.5.1
-        rbenv global 2.5.1
-        gem install bundler
-        git clone https://github.com/rea-cruitment/simple-sinatra-app.git
-        cd simple-sinatra-app
-        git checkout ${GitBranchOrCommit}
-        bundle install
-        sudo /home/ec2-user/.rbenv/shims/bundle exec rackup -p 80 --host 0.0.0.0
+      SecurityGroups: 
+       - !Ref InstanceSecurityGroup
+      UserData: !Base64
+        Fn::Sub: |
+          #!/bin/bash
+
+          sudo yum install ruby -y
+          sudo yum install git -y
+          sudo sudo yum install git-core zlib zlib-devel gcc-c++ patch readline readline-devel libyaml-devel libffi-devel openssl-devel make bzip2 autoconf automake libtool bison curl sqlite-devel -y
+          sudo curl -sL https://github.com/rbenv/rbenv-installer/raw/master/bin/rbenv-installer | bash -
+          sudo echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bashrc
+          sudo echo 'eval "$(rbenv init -)"' >> ~/.bashrc
+          source ~/.bashrc
+          
+          rbenv install 2.5.1
+          rbenv global 2.5.1
+          gem install bundler
+          git clone https://github.com/rea-cruitment/simple-sinatra-app.git ~/simple-sinatra-app
+          cd ~/simple-sinatra-app
+          git checkout ${GitBranchOrCommit}
+          bundle install
+          sudo /home/ec2-user/.rbenv/shims/bundle exec rackup -p 80 --host 0.0.0.0
+
+          cfn-signal.exe -e 0 --stack=${AWS::StackId} --region=${AWS::Region} --resource=SinatraAppAutoScaling
 
   SinatraAppAutoScaling: 
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT30M
     Type: AWS::AutoScaling::AutoScalingGroup
     UpdatePolicy: 
       AutoScalingReplacingUpdate: 
@@ -87,7 +98,7 @@ Resources:
         Fn::GetAZs: 
           Ref: "AWS::Region"
       LaunchConfigurationName: !Ref SinatraLaunchConfiguration
-      MaxSize: "3"
+      MaxSize: "1"
       MinSize: "1"
       TargetGroupARNs:
         - !Ref TargetGroup

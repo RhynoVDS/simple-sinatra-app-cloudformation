@@ -1,0 +1,14 @@
+[
+    {
+        "ParameterKey": "VpcId",
+        "ParameterValue": "vpc-1ac6197d"
+    },
+    {
+        "ParameterKey": "SubnetIds",
+        "ParameterValue": "subnet-097cea40,subnet-b2c3a6d5"
+    },
+    {
+        "ParameterKey": "GitBranchOrCommit",
+        "ParameterValue": "master"
+    }
+]
