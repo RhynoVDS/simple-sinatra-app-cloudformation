@@ -1,0 +1,2 @@
+deploy:
+	aws cloudformation 
